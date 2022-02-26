@@ -1,0 +1,132 @@
+---
+title: "STAA_566_HW3"
+author: "Yingzhen Wang"
+date: "2/26/2022"
+output: html_document
+knit: (function(input_file, encoding) {
+  out_dir <- 'docs';
+  rmarkdown::render(input_file,
+ encoding=encoding,
+ output_file=file.path(dirname(input_file), out_dir, 'index.html'))})
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width=12, fig.height=8, fig.path='Figs/',
+                      echo= TRUE, warning=FALSE, message=FALSE)
+```
+
+## The data is the USArrest data from the 'datasets' package that comes with R, and the number of murder arrests per 100,000 people is taken.
+
+## The spatial unit is each state of the United States.
+
+## The purpose is to know whether there is a geographical connection between the states with the highest crime rate, and to explore whether the state with the highest crime rate is due to its geographical reasons or the legal system of the state.
+
+## The data processing fills the geographic coordinates of each state with the same crime data, which making the plot more uniform.
+
+### Flat Map
+
+```{r}
+library(stringr)
+library(datasets)
+library(dplyr)
+library(ggplot2)
+library(maps)
+library(mapproj)
+library(viridis)
+library(leaflet)
+murder <- USArrests[,1:2]
+map_data("state") %>% head(n=20)
+
+
+ggplot(map_data("state") %>% filter(region=="colorado"),
+       aes(x=long, y=lat)) + 
+  geom_point()
+
+p <- ggplot(map_data("state") %>% filter(region=="colorado"),
+       aes(x=long, y=lat)) + 
+  geom_point() + 
+  geom_polygon(fill=NA, color="blue")
+map_data("state") %>% 
+  filter(region=="colorado") %>%
+  filter(order %in% range(order))
+murder$region <- rownames(murder)
+
+us_states_murder <- map_data("state") %>%
+  mutate(region = str_to_title(region),
+         subregion = str_to_title(subregion)) %>% 
+  left_join(murder, by = c( "region" = "region"))
+us_states_murder %>% head(n=14)
+
+p_murder_state <- ggplot(data = us_states_murder,
+            mapping = aes(x = long, y = lat,
+                          group = group))
+p_murder_state <- p_murder_state + geom_polygon(color="white")
+p_murder_state <- ggplot(data = us_states_murder,
+            mapping = aes(x = long, y = lat,
+                          group = group, 
+                          fill = Murder))
+
+p_murder_state <- p_murder_state + geom_polygon(color="black")
+p_murder_state <- p_murder_state + ggdendro::theme_dendro()
+p_murder_state <- p_murder_state + scale_fill_viridis(option="magma", direction=-1)
+p_murder_state <- p_murder_state + guides(fill=guide_legend(title="murder arrests per 100K"))
+p_murder_state <- p_murder_state +  coord_map()
+p_murder_state
+```
+
+### Spatial Map with icons
+
+```{r}
+map_data("state") %>% 
+  filter(region=="colorado") %>%
+  filter(order %in% range(order))
+
+state <- map_data("state")[,c('long','lat','region')]
+state <- state %>%
+             group_by(region) %>%
+             summarise(long1 = mean(long),lat1 = mean(lat))
+            
+
+murder$region <- rownames(murder)
+
+us_states_murder <- state %>%
+  mutate(region = str_to_title(region)) %>% 
+  left_join(murder, by = c( "region" = "region"))
+
+make_color <- function(x) {
+  sapply(x$Murder, function(y) {
+    if(y <= 5) {
+      "green"
+    } else if(y <= 10) {
+      "orange"
+    } else {
+      "red"
+    } })
+}
+
+# create icon format
+us_states_murder <- us_states_murder[complete.cases(us_states_murder),]
+
+icons <- awesomeIcons(
+  icon = 'ios-close',
+  iconColor = 'black',
+  library = 'fa',   
+  text=round(us_states_murder$Murder), 
+  markerColor = make_color(us_states_murder)
+)
+
+labs <- lapply(seq(nrow(us_states_murder)), 
+               function(i) {
+  paste0( "", "Annual average: ",as.character(us_states_murder[i, "Murder"]), '<br>',
+          as.character(us_states_murder[i, "region"]) ) 
+})
+
+
+class(labs)
+leaflet(us_states_murder) %>% addTiles()  %>% 
+  addAwesomeMarkers(~long1, ~lat1,
+             label = as.character(us_states_murder$Murder),
+             icon=icons)
+```
+
+
